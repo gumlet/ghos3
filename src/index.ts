@@ -1,16 +1,27 @@
 import {
-  type PutObjectCommandInput,
-  type S3ClientConfig,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  NoSuchKey,
   type ObjectCannedACL,
+  PutObjectCommand,
+  type PutObjectCommandInput,
   S3,
+  type S3Client,
+  type S3ClientConfig,
 } from '@aws-sdk/client-s3'
-import StorageBase, { type ReadOptions, type Image } from 'ghost-storage-base'
 import errors from '@tryghost/errors'
 import tpl from '@tryghost/tpl'
-import { join } from 'path'
-import { createReadStream } from 'fs'
-import type { Readable } from 'stream'
 import type { Handler } from 'express'
+import { createReadStream } from 'node:fs'
+import { StorageBase } from 'ghost-storage-base'
+import { join } from 'node:path'
+import type { Readable } from 'node:stream'
+
+interface UploadFile {
+  name: string;
+  path: string;
+  type?: string;
+}
 
 const stripLeadingSlash = (s: string) =>
   s.indexOf('/') === 0 ? s.substring(1) : s
@@ -40,6 +51,7 @@ class S3Storage extends StorageBase {
   endpoint: string
   forcePathStyle: boolean
   useDualstackEndpoint: boolean
+  s3Client: S3Client
   acl?: ObjectCannedACL
 
   constructor(config: Config = {}) {
@@ -59,11 +71,11 @@ class S3Storage extends StorageBase {
     } = config
 
     // Compatible with the aws-sdk's default environment variables
-    this.accessKeyId = accessKeyId
-    this.secretAccessKey = secretAccessKey
-    this.region = process.env.AWS_DEFAULT_REGION || region
+    this.accessKeyId = accessKeyId as string
+    this.secretAccessKey = secretAccessKey as string
+    this.region = process.env.AWS_DEFAULT_REGION || region as string
 
-    this.bucket = process.env.GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET || bucket
+    this.bucket = process.env.GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET || bucket as string
 
     if (!this.bucket) throw new Error('S3 bucket not specified')
 
@@ -103,39 +115,9 @@ class S3Storage extends StorageBase {
     this.acl = (process.env.GHOST_STORAGE_ADAPTER_S3_ACL ||
       acl ||
       'public-read') as ObjectCannedACL
-  }
 
-  async delete(fileName: string, targetDir?: string) {
-    const directory = targetDir || this.getTargetDir(this.pathPrefix)
-
-    try {
-      await this.s3().deleteObject({
-        Bucket: this.bucket,
-        Key: stripLeadingSlash(join(directory, fileName)),
-      })
-    } catch {
-      return false
-    }
-    return true
-  }
-
-  async exists(fileName: string, targetDir?: string) {
-    try {
-      await this.s3().getObject({
-        Bucket: this.bucket,
-        Key: stripLeadingSlash(
-          targetDir ? join(targetDir, fileName) : fileName
-        ),
-      })
-    } catch {
-      return false
-    }
-    return true
-  }
-
-  s3() {
     const options: S3ClientConfig = {
-      region: this.region,
+      region: this.region as string,
       forcePathStyle: this.forcePathStyle,
       useDualstackEndpoint: this.useDualstackEndpoint,
     }
@@ -143,15 +125,41 @@ class S3Storage extends StorageBase {
     // Set credentials only if provided, falls back to AWS SDK's default provider chain
     if (this.accessKeyId && this.secretAccessKey) {
       options.credentials = {
-        accessKeyId: this.accessKeyId,
-        secretAccessKey: this.secretAccessKey,
+        accessKeyId: this.accessKeyId as string,
+        secretAccessKey: this.secretAccessKey as string,
       }
     }
 
     if (this.endpoint !== '') {
       options.endpoint = this.endpoint
     }
-    return new S3(options)
+    this.s3Client = new S3(options)
+  }
+
+  async delete(fileName: string, targetDir?: string): Promise<void> {
+    const directory = targetDir || this.getTargetDir(this.pathPrefix)
+
+    try {
+      await this.s3Client.send(new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: stripLeadingSlash(join(directory, fileName)),
+      }))
+    } catch {
+    }
+  }
+
+  async exists(fileName: string, targetDir?: string) {
+    try {
+      await this.s3Client.send(new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: stripLeadingSlash(
+          targetDir ? join(targetDir, fileName) : fileName
+        ),
+      }))
+    } catch {
+      return false
+    }
+    return true
   }
 
   // Doesn't seem to be documented, but required for using this adapter for other media file types.
@@ -161,13 +169,13 @@ class S3Storage extends StorageBase {
     return parsedUrl.pathname
   }
 
-  async save(image: Image, targetDir?: string) {
+  async save(image: UploadFile, targetDir?: string) {
     const directory = targetDir || this.getTargetDir(this.pathPrefix)
 
     const fileName = await this.getUniqueFileName(image, directory)
     const file = createReadStream(image.path)
 
-    let config: PutObjectCommandInput = {
+    const config: PutObjectCommandInput = {
       ACL: this.acl,
       Body: file,
       Bucket: this.bucket,
@@ -175,7 +183,29 @@ class S3Storage extends StorageBase {
       ContentType: image.type,
       Key: stripLeadingSlash(fileName),
     }
-    await this.s3().putObject(config)
+    await this.s3Client.send(new PutObjectCommand(config))
+
+    return `${this.host}/${stripLeadingSlash(fileName)}`
+  }
+
+  async saveRaw(buffer: Buffer, targetPath: string): Promise<string> {
+    if (!targetPath?.trim()) {
+      throw new errors.IncorrectUsageError({
+        message: "Target path is required",
+      });
+    }
+
+    const directory = this.getTargetDir(this.pathPrefix)
+    const fileName = stripLeadingSlash(join(directory, targetPath))
+    await this.s3Client.send(
+      new PutObjectCommand({
+        ACL: this.acl,
+        Bucket: this.bucket,
+        Key: stripLeadingSlash(fileName),
+        Body: buffer,
+        ContentType: 'application/octet-stream',
+      }),
+    );
 
     return `${this.host}/${stripLeadingSlash(fileName)}`
   }
@@ -183,10 +213,10 @@ class S3Storage extends StorageBase {
   serve(): Handler {
     return async (req, res, next) => {
       try {
-        const output = await this.s3().getObject({
+        const output = await this.s3Client.send(new GetObjectCommand({
           Bucket: this.bucket,
           Key: stripLeadingSlash(stripEndingSlash(this.pathPrefix) + req.path),
-        })
+        }))
 
         const headers: { [key: string]: string } = {}
         if (output.AcceptRanges) headers['accept-ranges'] = output.AcceptRanges
@@ -206,23 +236,23 @@ class S3Storage extends StorageBase {
 
         const stream = output.Body as Readable
         stream.pipe(res)
-      } catch (err) {
-        if (err.name === 'NoSuchKey') {
+      } catch (err: unknown) {
+        if (err instanceof NoSuchKey) {
           return next(
             new errors.NotFoundError({
               message: tpl('File not found'),
               code: 'STATIC_FILE_NOT_FOUND',
-              property: err.path,
+              property: (err as NoSuchKey).name,
             })
           )
         } else {
-          next(new errors.InternalServerError({ err: err }))
+          next(new errors.InternalServerError({ err: err as Error }))
         }
       }
     }
   }
 
-  async read(options: ReadOptions = { path: '' }) {
+  async read(options: {path?: string} = { path: '' }): Promise<Buffer> {
     let path = (options.path || '').replace(/\/$|\\$/, '')
 
     // check if path is stored in s3 handled by us
@@ -231,19 +261,17 @@ class S3Storage extends StorageBase {
     }
     path = path.substring(this.host.length)
 
-    const response = await this.s3().getObject({
+    const response = await this.s3Client.send(new GetObjectCommand({
       Bucket: this.bucket,
       Key: stripLeadingSlash(path),
-    })
-    const stream = response.Body as Readable
-
-    return await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = []
-      stream.on('data', (chunk) => chunks.push(chunk))
-      stream.once('end', () => resolve(Buffer.concat(chunks)))
-      stream.once('error', reject)
-    })
+    }))
+    const byteArray = await response.Body?.transformToByteArray()
+    if (!byteArray) {
+      throw new Error('Failed to read file from s3')
+    }
+    return Buffer.from(byteArray)
   }
+  
 }
 
 export default S3Storage
