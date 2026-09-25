@@ -46,8 +46,8 @@ Largely the same, but note `signatureVersion` and `serverSideEncryption` are rem
     "adapter": "s3"
   },
   "s3": {
-    "accessKeyId": "YOUR_ACCESS_KEY_ID",
-    "secretAccessKey": "YOUR_SECRET_ACCESS_KEY",
+    "accesskey": "YOUR_ACCESS_KEY_ID",
+    "secretkey": "YOUR_SECRET_ACCESS_KEY",
     "region": "YOUR_REGION_SLUG",
     "bucket": "YOUR_BUCKET_NAME",
     "assetHost": "YOUR_OPTIONAL_CDN_URL (See note 1 below)",
@@ -69,8 +69,8 @@ Largely the same, but note `signatureVersion` and `serverSideEncryption` are rem
 
 ```
 AWS_DEFAULT_REGION
-AWS_ACCESS_KEY_ID // optional
-AWS_SECRET_ACCESS_KEY // optional
+STORAGE__S3__ACCESSKEY // optional
+STORAGE__S3__SECRETKEY // optional
 GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET
 GHOST_STORAGE_ADAPTER_S3_ASSET_HOST  // optional
 GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX // optional

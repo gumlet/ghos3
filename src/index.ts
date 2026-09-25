@@ -29,12 +29,12 @@ const stripEndingSlash = (s: string) =>
 	s.indexOf("/") === s.length - 1 ? s.substring(0, s.length - 1) : s;
 
 type Config = {
-	accessKeyId?: string;
+	accesskey?: string;
 	assetHost?: string;
 	bucket?: string;
 	pathPrefix?: string;
 	region?: string;
-	secretAccessKey?: string;
+	secretkey?: string;
 	endpoint?: string;
 	forcePathStyle?: boolean;
 	useDualstackEndpoint?: boolean;
@@ -58,12 +58,12 @@ class S3Storage extends StorageBase {
 		super();
 
 		const {
-			accessKeyId,
+			accesskey,
 			assetHost,
 			bucket,
 			pathPrefix,
 			region,
-			secretAccessKey,
+			secretkey,
 			endpoint,
 			forcePathStyle,
 			useDualstackEndpoint,
@@ -71,8 +71,8 @@ class S3Storage extends StorageBase {
 		} = config;
 
 		// Compatible with the aws-sdk's default environment variables
-		this.accessKeyId = accessKeyId as string;
-		this.secretAccessKey = secretAccessKey as string;
+		this.accessKeyId = accesskey as string;
+		this.secretAccessKey = secretkey as string;
 		this.region = process.env.AWS_DEFAULT_REGION || (region as string);
 
 		this.bucket =
