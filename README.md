@@ -1,30 +1,26 @@
 # GhoS3
 
-An AWS S3 storage adapter tested on Ghost 5.x.
+An AWS S3 storage adapter tested on Ghost 6.x.
 
-This is a modernized version based on [colinmeinke/ghost-storage-adapter-s3](https://github.com/colinmeinke/ghost-storage-adapter-s3). Major changes are:
+This is a modernized version based on [https://github.com/laosb/ghos3](https://github.com/laosb/ghos3). Major changes are:
 
 - Adopted `async`/`await`
 - Rewritten in TypeScript
 - Use latest Version 3 of AWS SDK
 
-It's designed to be a drop-in replacement of colinmeinke's package, so configuration and installation method remained largely the same.
-
-However, this port pretty much targets only Ghost 5.x and up, as the build toolchain is set to target Node 16.x. With some modifications this should work for older version of Ghost (PRs welcomed).
-
-On my blog [_The Base_](https://base.of.sb), I use [Cloudflare R2](https://www.cloudflare.com/zh-tw/products/r2/) with GhoS3.
+This port pretty much targets only Ghost 6.x and up, as the build toolchain is set to target Node 24.x. With some modifications this should work for older version of Ghost (PRs welcomed).
 
 ## Installation
 
 ```bash
 # Install ghos3 package
-npm install ghos3
+npm install @gumlet/ghos3
 
 # Create directory to storage adapter
 mkdir -p ./content/adapters/storage
 
 # Copy package files to s3 storage folder
-cp -r ./node_modules/ghos3/* ./content/adapters/storage/s3
+cp -r ./node_modules/@gumlet/ghos3/* ./content/adapters/storage/s3
 
 # Remove unnecessary files generated from ghos3 installation
 rm -Rf node_modules package-lock.json package.json

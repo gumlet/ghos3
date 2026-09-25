@@ -239,7 +239,7 @@ class S3Storage extends StorageBase {
 					headers["content-length"] = `${output.ContentLength}`;
 				if (output.ContentRange) headers["content-range"] = output.ContentRange;
 				if (output.ContentType) headers["content-type"] = output.ContentType;
-				if (output.ETag) headers["etag"] = output.ETag;
+				if (output.ETag) headers.etag = output.ETag;
 				res.set(headers);
 
 				const stream = output.Body as Readable;
