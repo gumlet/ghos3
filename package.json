@@ -1,27 +1,27 @@
 {
-  "name": "ghos3",
-  "version": "3.1.0",
-  "description": "S3 Storage adapter for Ghost.",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "build:traditional": "esbuild ./src/index.js --bundle --outfile=index.js --platform=node --format=cjs --target=node16 --packages=external --footer:js='module.exports = module.exports.default;'",
-    "build:bundled": "esbuild ./src/index.js --bundle --minify --outfile=index.bundled.js --platform=node --format=cjs --target=node16 --packages=bundle --legal-comments=external --footer:js='module.exports = module.exports.default;'",
-    "build": "pnpm build:traditional && pnpm build:bundled",
-    "prepublishOnly": "pnpm build",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "Shibo Lyu <github@of.sb>",
-  "license": "ISC",
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.721.0",
-    "@tryghost/errors": "^3.3.0",
-    "@tryghost/tpl": "^2.3.0",
-    "ghost-storage-base": "^3.0.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
-    "@types/express": "^5.0.0",
-    "typescript": "^7.0.0"
-  }
+	"name": "ghos3",
+	"version": "3.1.0",
+	"description": "S3 Storage adapter for Ghost.",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"lint": "biome check",
+		"lint:fix": "biome check --write",
+		"prepublishOnly": "npm run build",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"author": "Shibo Lyu <github@of.sb>",
+	"license": "ISC",
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.721.0",
+		"@tryghost/errors": "^3.3.0",
+		"@tryghost/tpl": "^2.3.0",
+		"ghost-storage-base": "^3.0.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.14",
+		"@types/express": "^5.0.0",
+		"typescript": "^7.0.0"
+	}
 }

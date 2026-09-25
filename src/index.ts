@@ -1,277 +1,286 @@
+import { createReadStream } from "node:fs";
+import { join } from "node:path";
+import type { Readable } from "node:stream";
 import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  NoSuchKey,
-  type ObjectCannedACL,
-  PutObjectCommand,
-  type PutObjectCommandInput,
-  S3,
-  type S3Client,
-  type S3ClientConfig,
-} from '@aws-sdk/client-s3'
-import errors from '@tryghost/errors'
-import tpl from '@tryghost/tpl'
-import type { Handler } from 'express'
-import { createReadStream } from 'node:fs'
-import { StorageBase } from 'ghost-storage-base'
-import { join } from 'node:path'
-import type { Readable } from 'node:stream'
+	DeleteObjectCommand,
+	GetObjectCommand,
+	NoSuchKey,
+	type ObjectCannedACL,
+	PutObjectCommand,
+	type PutObjectCommandInput,
+	S3,
+	type S3Client,
+	type S3ClientConfig,
+} from "@aws-sdk/client-s3";
+import errors from "@tryghost/errors";
+import tpl from "@tryghost/tpl";
+import type { Handler } from "express";
+import { StorageBase } from "ghost-storage-base";
 
 interface UploadFile {
-  name: string;
-  path: string;
-  type?: string;
+	name: string;
+	path: string;
+	type?: string;
 }
 
 const stripLeadingSlash = (s: string) =>
-  s.indexOf('/') === 0 ? s.substring(1) : s
+	s.indexOf("/") === 0 ? s.substring(1) : s;
 const stripEndingSlash = (s: string) =>
-  s.indexOf('/') === s.length - 1 ? s.substring(0, s.length - 1) : s
+	s.indexOf("/") === s.length - 1 ? s.substring(0, s.length - 1) : s;
 
 type Config = {
-  accessKeyId?: string
-  assetHost?: string
-  bucket?: string
-  pathPrefix?: string
-  region?: string
-  secretAccessKey?: string
-  endpoint?: string
-  forcePathStyle?: boolean
-  useDualstackEndpoint?: boolean
-  acl?: string
-}
+	accessKeyId?: string;
+	assetHost?: string;
+	bucket?: string;
+	pathPrefix?: string;
+	region?: string;
+	secretAccessKey?: string;
+	endpoint?: string;
+	forcePathStyle?: boolean;
+	useDualstackEndpoint?: boolean;
+	acl?: string;
+};
 
 class S3Storage extends StorageBase {
-  accessKeyId?: string
-  secretAccessKey?: string
-  region?: string
-  bucket?: string
-  host: string
-  pathPrefix: string
-  endpoint: string
-  forcePathStyle: boolean
-  useDualstackEndpoint: boolean
-  s3Client: S3Client
-  acl?: ObjectCannedACL
+	accessKeyId?: string;
+	secretAccessKey?: string;
+	region?: string;
+	bucket?: string;
+	host: string;
+	pathPrefix: string;
+	endpoint: string;
+	forcePathStyle: boolean;
+	useDualstackEndpoint: boolean;
+	s3Client: S3Client;
+	acl?: ObjectCannedACL;
 
-  constructor(config: Config = {}) {
-    super()
+	constructor(config: Config = {}) {
+		super();
 
-    const {
-      accessKeyId,
-      assetHost,
-      bucket,
-      pathPrefix,
-      region,
-      secretAccessKey,
-      endpoint,
-      forcePathStyle,
-      useDualstackEndpoint,
-      acl,
-    } = config
+		const {
+			accessKeyId,
+			assetHost,
+			bucket,
+			pathPrefix,
+			region,
+			secretAccessKey,
+			endpoint,
+			forcePathStyle,
+			useDualstackEndpoint,
+			acl,
+		} = config;
 
-    // Compatible with the aws-sdk's default environment variables
-    this.accessKeyId = accessKeyId as string
-    this.secretAccessKey = secretAccessKey as string
-    this.region = process.env.AWS_DEFAULT_REGION || region as string
+		// Compatible with the aws-sdk's default environment variables
+		this.accessKeyId = accessKeyId as string;
+		this.secretAccessKey = secretAccessKey as string;
+		this.region = process.env.AWS_DEFAULT_REGION || (region as string);
 
-    this.bucket = process.env.GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET || bucket as string
+		this.bucket =
+			process.env.GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET || (bucket as string);
 
-    if (!this.bucket) throw new Error('S3 bucket not specified')
+		if (!this.bucket) throw new Error("S3 bucket not specified");
 
-    // Optional configurations
-    this.forcePathStyle =
-      Boolean(process.env.GHOST_STORAGE_ADAPTER_S3_FORCE_PATH_STYLE) ||
-      Boolean(forcePathStyle) ||
-      false
+		// Optional configurations
+		this.forcePathStyle =
+			Boolean(process.env.GHOST_STORAGE_ADAPTER_S3_FORCE_PATH_STYLE) ||
+			Boolean(forcePathStyle) ||
+			false;
 
-    this.useDualstackEndpoint =
-      Boolean(process.env.GHOST_STORAGE_ADAPTER_S3_USE_DUALSTACK_ENDPOINT) ||
-      Boolean(useDualstackEndpoint) ||
-      false
+		this.useDualstackEndpoint =
+			Boolean(process.env.GHOST_STORAGE_ADAPTER_S3_USE_DUALSTACK_ENDPOINT) ||
+			Boolean(useDualstackEndpoint) ||
+			false;
 
-    let defaultHost: string
+		let defaultHost: string;
 
-    if (this.forcePathStyle) {
-      defaultHost = `https://s3${
-        this.region === 'us-east-1' ? '' : `.${this.region}`
-      }.amazonaws.com/${this.bucket}`
-    } else {
-      defaultHost = `https://${this.bucket}.s3${
-        this.region === 'us-east-1' ? '' : `.${this.region}`
-      }.amazonaws.com`
-    }
+		if (this.forcePathStyle) {
+			defaultHost = `https://s3${
+				this.region === "us-east-1" ? "" : `.${this.region}`
+			}.amazonaws.com/${this.bucket}`;
+		} else {
+			defaultHost = `https://${this.bucket}.s3${
+				this.region === "us-east-1" ? "" : `.${this.region}`
+			}.amazonaws.com`;
+		}
 
-    this.host =
-      process.env.GHOST_STORAGE_ADAPTER_S3_ASSET_HOST ||
-      assetHost ||
-      defaultHost
+		this.host =
+			process.env.GHOST_STORAGE_ADAPTER_S3_ASSET_HOST ||
+			assetHost ||
+			defaultHost;
 
-    this.pathPrefix = stripLeadingSlash(
-      process.env.GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX || pathPrefix || ''
-    )
-    this.endpoint =
-      process.env.GHOST_STORAGE_ADAPTER_S3_ENDPOINT || endpoint || ''
-    this.acl = (process.env.GHOST_STORAGE_ADAPTER_S3_ACL ||
-      acl ||
-      'public-read') as ObjectCannedACL
+		this.pathPrefix = stripLeadingSlash(
+			process.env.GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX || pathPrefix || "",
+		);
+		this.endpoint =
+			process.env.GHOST_STORAGE_ADAPTER_S3_ENDPOINT || endpoint || "";
+		this.acl = (process.env.GHOST_STORAGE_ADAPTER_S3_ACL ||
+			acl ||
+			"public-read") as ObjectCannedACL;
 
-    const options: S3ClientConfig = {
-      region: this.region as string,
-      forcePathStyle: this.forcePathStyle,
-      useDualstackEndpoint: this.useDualstackEndpoint,
-    }
+		const options: S3ClientConfig = {
+			region: this.region as string,
+			forcePathStyle: this.forcePathStyle,
+			useDualstackEndpoint: this.useDualstackEndpoint,
+		};
 
-    // Set credentials only if provided, falls back to AWS SDK's default provider chain
-    if (this.accessKeyId && this.secretAccessKey) {
-      options.credentials = {
-        accessKeyId: this.accessKeyId as string,
-        secretAccessKey: this.secretAccessKey as string,
-      }
-    }
+		// Set credentials only if provided, falls back to AWS SDK's default provider chain
+		if (this.accessKeyId && this.secretAccessKey) {
+			options.credentials = {
+				accessKeyId: this.accessKeyId as string,
+				secretAccessKey: this.secretAccessKey as string,
+			};
+		}
 
-    if (this.endpoint !== '') {
-      options.endpoint = this.endpoint
-    }
-    this.s3Client = new S3(options)
-  }
+		if (this.endpoint !== "") {
+			options.endpoint = this.endpoint;
+		}
+		this.s3Client = new S3(options);
+	}
 
-  async delete(fileName: string, targetDir?: string): Promise<void> {
-    const directory = targetDir || this.getTargetDir(this.pathPrefix)
+	async delete(fileName: string, targetDir?: string): Promise<void> {
+		const directory = targetDir || this.getTargetDir(this.pathPrefix);
 
-    try {
-      await this.s3Client.send(new DeleteObjectCommand({
-        Bucket: this.bucket,
-        Key: stripLeadingSlash(join(directory, fileName)),
-      }))
-    } catch {
-    }
-  }
+		try {
+			await this.s3Client.send(
+				new DeleteObjectCommand({
+					Bucket: this.bucket,
+					Key: stripLeadingSlash(join(directory, fileName)),
+				}),
+			);
+		} catch {}
+	}
 
-  async exists(fileName: string, targetDir?: string) {
-    try {
-      await this.s3Client.send(new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: stripLeadingSlash(
-          targetDir ? join(targetDir, fileName) : fileName
-        ),
-      }))
-    } catch {
-      return false
-    }
-    return true
-  }
+	async exists(fileName: string, targetDir?: string) {
+		try {
+			await this.s3Client.send(
+				new GetObjectCommand({
+					Bucket: this.bucket,
+					Key: stripLeadingSlash(
+						targetDir ? join(targetDir, fileName) : fileName,
+					),
+				}),
+			);
+		} catch {
+			return false;
+		}
+		return true;
+	}
 
-  // Doesn't seem to be documented, but required for using this adapter for other media file types.
-  // Seealso: https://github.com/laosb/ghos3/pull/6
-  urlToPath(url: string) {
-    const parsedUrl = new URL(url)
-    return parsedUrl.pathname
-  }
+	// Doesn't seem to be documented, but required for using this adapter for other media file types.
+	// Seealso: https://github.com/laosb/ghos3/pull/6
+	urlToPath(url: string) {
+		const parsedUrl = new URL(url);
+		return parsedUrl.pathname;
+	}
 
-  async save(image: UploadFile, targetDir?: string) {
-    const directory = targetDir || this.getTargetDir(this.pathPrefix)
+	async save(image: UploadFile, targetDir?: string) {
+		const directory = targetDir || this.getTargetDir(this.pathPrefix);
 
-    const fileName = await this.getUniqueFileName(image, directory)
-    const file = createReadStream(image.path)
+		const fileName = await this.getUniqueFileName(image, directory);
+		const file = createReadStream(image.path);
 
-    const config: PutObjectCommandInput = {
-      ACL: this.acl,
-      Body: file,
-      Bucket: this.bucket,
-      CacheControl: `max-age=${30 * 24 * 60 * 60}`,
-      ContentType: image.type,
-      Key: stripLeadingSlash(fileName),
-    }
-    await this.s3Client.send(new PutObjectCommand(config))
+		const config: PutObjectCommandInput = {
+			ACL: this.acl,
+			Body: file,
+			Bucket: this.bucket,
+			CacheControl: `max-age=${30 * 24 * 60 * 60}`,
+			ContentType: image.type,
+			Key: stripLeadingSlash(fileName),
+		};
+		await this.s3Client.send(new PutObjectCommand(config));
 
-    return `${this.host}/${stripLeadingSlash(fileName)}`
-  }
+		return `${this.host}/${stripLeadingSlash(fileName)}`;
+	}
 
-  async saveRaw(buffer: Buffer, targetPath: string): Promise<string> {
-    if (!targetPath?.trim()) {
-      throw new errors.IncorrectUsageError({
-        message: "Target path is required",
-      });
-    }
+	async saveRaw(buffer: Buffer, targetPath: string): Promise<string> {
+		if (!targetPath?.trim()) {
+			throw new errors.IncorrectUsageError({
+				message: "Target path is required",
+			});
+		}
 
-    const directory = this.getTargetDir(this.pathPrefix)
-    const fileName = stripLeadingSlash(join(directory, targetPath))
-    await this.s3Client.send(
-      new PutObjectCommand({
-        ACL: this.acl,
-        Bucket: this.bucket,
-        Key: stripLeadingSlash(fileName),
-        Body: buffer,
-        ContentType: 'application/octet-stream',
-      }),
-    );
+		const directory = this.getTargetDir(this.pathPrefix);
+		const fileName = stripLeadingSlash(join(directory, targetPath));
+		await this.s3Client.send(
+			new PutObjectCommand({
+				ACL: this.acl,
+				Bucket: this.bucket,
+				Key: stripLeadingSlash(fileName),
+				Body: buffer,
+				ContentType: "application/octet-stream",
+			}),
+		);
 
-    return `${this.host}/${stripLeadingSlash(fileName)}`
-  }
+		return `${this.host}/${stripLeadingSlash(fileName)}`;
+	}
 
-  serve(): Handler {
-    return async (req, res, next) => {
-      try {
-        const output = await this.s3Client.send(new GetObjectCommand({
-          Bucket: this.bucket,
-          Key: stripLeadingSlash(stripEndingSlash(this.pathPrefix) + req.path),
-        }))
+	serve(): Handler {
+		return async (req, res, next) => {
+			try {
+				const output = await this.s3Client.send(
+					new GetObjectCommand({
+						Bucket: this.bucket,
+						Key: stripLeadingSlash(
+							stripEndingSlash(this.pathPrefix) + req.path,
+						),
+					}),
+				);
 
-        const headers: { [key: string]: string } = {}
-        if (output.AcceptRanges) headers['accept-ranges'] = output.AcceptRanges
-        if (output.CacheControl) headers['cache-control'] = output.CacheControl
-        if (output.ContentDisposition)
-          headers['content-disposition'] = output.ContentDisposition
-        if (output.ContentEncoding)
-          headers['content-encoding'] = output.ContentEncoding
-        if (output.ContentLanguage)
-          headers['content-language'] = output.ContentLanguage
-        if (output.ContentLength)
-          headers['content-length'] = `${output.ContentLength}`
-        if (output.ContentRange) headers['content-range'] = output.ContentRange
-        if (output.ContentType) headers['content-type'] = output.ContentType
-        if (output.ETag) headers['etag'] = output.ETag
-        res.set(headers)
+				const headers: { [key: string]: string } = {};
+				if (output.AcceptRanges) headers["accept-ranges"] = output.AcceptRanges;
+				if (output.CacheControl) headers["cache-control"] = output.CacheControl;
+				if (output.ContentDisposition)
+					headers["content-disposition"] = output.ContentDisposition;
+				if (output.ContentEncoding)
+					headers["content-encoding"] = output.ContentEncoding;
+				if (output.ContentLanguage)
+					headers["content-language"] = output.ContentLanguage;
+				if (output.ContentLength)
+					headers["content-length"] = `${output.ContentLength}`;
+				if (output.ContentRange) headers["content-range"] = output.ContentRange;
+				if (output.ContentType) headers["content-type"] = output.ContentType;
+				if (output.ETag) headers["etag"] = output.ETag;
+				res.set(headers);
 
-        const stream = output.Body as Readable
-        stream.pipe(res)
-      } catch (err: unknown) {
-        if (err instanceof NoSuchKey) {
-          return next(
-            new errors.NotFoundError({
-              message: tpl('File not found'),
-              code: 'STATIC_FILE_NOT_FOUND',
-              property: (err as NoSuchKey).name,
-            })
-          )
-        } else {
-          next(new errors.InternalServerError({ err: err as Error }))
-        }
-      }
-    }
-  }
+				const stream = output.Body as Readable;
+				stream.pipe(res);
+			} catch (err: unknown) {
+				if (err instanceof NoSuchKey) {
+					return next(
+						new errors.NotFoundError({
+							message: tpl("File not found"),
+							code: "STATIC_FILE_NOT_FOUND",
+							property: (err as NoSuchKey).name,
+						}),
+					);
+				} else {
+					next(new errors.InternalServerError({ err: err as Error }));
+				}
+			}
+		};
+	}
 
-  async read(options: {path?: string} = { path: '' }): Promise<Buffer> {
-    let path = (options.path || '').replace(/\/$|\\$/, '')
+	async read(options: { path?: string } = { path: "" }): Promise<Buffer> {
+		let path = (options.path || "").replace(/\/$|\\$/, "");
 
-    // check if path is stored in s3 handled by us
-    if (!path.startsWith(this.host)) {
-      throw new Error(`${path} is not stored in s3`)
-    }
-    path = path.substring(this.host.length)
+		// check if path is stored in s3 handled by us
+		if (!path.startsWith(this.host)) {
+			throw new Error(`${path} is not stored in s3`);
+		}
+		path = path.substring(this.host.length);
 
-    const response = await this.s3Client.send(new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: stripLeadingSlash(path),
-    }))
-    const byteArray = await response.Body?.transformToByteArray()
-    if (!byteArray) {
-      throw new Error('Failed to read file from s3')
-    }
-    return Buffer.from(byteArray)
-  }
-  
+		const response = await this.s3Client.send(
+			new GetObjectCommand({
+				Bucket: this.bucket,
+				Key: stripLeadingSlash(path),
+			}),
+		);
+		const byteArray = await response.Body?.transformToByteArray();
+		if (!byteArray) {
+			throw new Error("Failed to read file from s3");
+		}
+		return Buffer.from(byteArray);
+	}
 }
 
-export default S3Storage
+export default S3Storage;
