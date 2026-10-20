@@ -23,6 +23,28 @@
 	},
 	"author": "Gumlet <support@gumlet.com>",
 	"license": "ISC",
+	"homepage": "https://github.com/gumlet/ghos3#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/gumlet/ghos3.git"
+	},
+	"bugs": {
+		"url": "https://github.com/gumlet/ghos3/issues"
+	},
+	"keywords": [
+		"ghost",
+		"ghost-cms",
+		"storage-adapter",
+		"s3",
+		"aws",
+		"aws-sdk"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.721.0",
 		"@tryghost/errors": "^3.3.0",

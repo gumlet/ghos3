@@ -1,5 +1,7 @@
 # GhoS3
 
+[![npm](https://img.shields.io/npm/v/@gumlet/ghos3)](https://www.npmjs.com/package/@gumlet/ghos3)
+
 An AWS S3 storage adapter tested on Ghost 6.x.
 
 This is a modernized version based on [https://github.com/laosb/ghos3](https://github.com/laosb/ghos3). Major changes are:
