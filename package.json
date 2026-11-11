@@ -16,9 +16,9 @@
 	],
 	"scripts": {
 		"build": "tsc",
-		"lint": "biome check",
+		"lint": "biome lint",
 		"typecheck": "tsc --noEmit",
-		"lint:fix": "biome check --write",
+		"lint:fix": "biome lint --write",
 		"prepublishOnly": "npm run build",
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},

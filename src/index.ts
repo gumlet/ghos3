@@ -272,11 +272,10 @@ class S3Storage extends StorageBase {
 			path = stripEndingSlash(path.substring(this.host.length));
 		} else {
 			path = stripLeadingSlash(path);
-			if(!path.startsWith(stripEndingSlash(this.pathPrefix))) {
-				path = this.pathPrefix + path
+			if (!path.startsWith(stripEndingSlash(this.pathPrefix))) {
+				path = this.pathPrefix + path;
 			}
 		}
-		
 
 		const response = await this.s3Client.send(
 			new GetObjectCommand({
