@@ -264,15 +264,24 @@ class S3Storage extends StorageBase {
 		let path = (options.path || "").replace(/\/$|\\$/, "");
 
 		// check if path is stored in s3 handled by us
-		if (!path.startsWith(this.host)) {
+		if (path.startsWith("http") && !path.startsWith(this.host)) {
 			throw new Error(`${path} is not stored in s3`);
 		}
-		path = path.substring(this.host.length);
+
+		if (path.startsWith("http")) {
+			path = stripEndingSlash(path.substring(this.host.length));
+		} else {
+			path = stripLeadingSlash(path);
+			if(!path.startsWith(stripEndingSlash(this.pathPrefix))) {
+				path = this.pathPrefix + path
+			}
+		}
+		
 
 		const response = await this.s3Client.send(
 			new GetObjectCommand({
 				Bucket: this.bucket,
-				Key: stripLeadingSlash(path),
+				Key: path,
 			}),
 		);
 		const byteArray = await response.Body?.transformToByteArray();
